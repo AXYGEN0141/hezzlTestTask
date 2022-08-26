@@ -1,42 +1,70 @@
 package main
 
 import (
+	"github.com/AXYGEN0141/hezzlTestTask/cache"
 	pb "github.com/AXYGEN0141/hezzlTestTask/protoUsers"
+	"github.com/AXYGEN0141/hezzlTestTask/repositories"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"log"
+	"google.golang.org/grpc/grpclog"
 	"net"
 )
 
 type Server struct {
 	pb.UnimplementedUserServiceServer
+	repo  Repository
+	cache Cache
+}
+
+type Repository interface {
+	AddUser(user *pb.User) error
+	DeleteUser(id int32) error
+}
+
+type Cache interface {
+	SetUser(user pb.User)
+	GetUser(key string) pb.User
+	DeleteUser(key string)
+	GetUsers() []*pb.User
 }
 
 func main() {
-	srv := grpc.NewServer()
-	listen, err := net.Listen("tcp", ":8080")
+	listener, err := net.Listen("tcp", "localhost:8080")
 	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
+		grpclog.Fatalf("failed to listen: %v", err)
 	}
-	pb.RegisterUserServiceServer(srv, Server{})
+	options := []grpc.ServerOption{}
+	server := grpc.NewServer(options...)
 
-	err = srv.Serve(listen)
-	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
-	}
+	db := repositories.New()
+	c := cache.New()
+
+	pb.RegisterUserServiceServer(server, &Server{
+		repo:  db,
+		cache: c,
+	})
+	server.Serve(listener)
 }
 
 func (s *Server) CreateUser(ctx context.Context, request *pb.CreateUserRequest) (*pb.CreateUserResponse, error) {
-	// Need to implement CreateUser
-	panic("CreateUser")
+	s.repo.AddUser(request.User)
+
+	s.cache.SetUser(*request.User)
+
+	return &pb.CreateUserResponse{
+		User: request.User,
+	}, nil
+
 }
 
 func (s *Server) DeleteUser(ctx context.Context, request *pb.DeleteUserRequest) (*pb.DeleteUserResponse, error) {
-	// Need to implement DeleteUser
-	panic("DeleteUser")
+	s.repo.DeleteUser(request.Id)
+	return nil, nil
 }
 
 func (s *Server) ListUser(ctx context.Context, request *pb.ListUserRequest) (*pb.ListUserResponse, error) {
-	// Need to implement ListUsers
-	panic("ListUsers")
+	Users := s.cache.GetUsers()
+	return &pb.ListUserResponse{
+		User: Users,
+	}, nil
 }
